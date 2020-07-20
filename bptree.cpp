@@ -142,9 +142,12 @@ static void insertion_sort(BPTreeNode* self, size_t idx) {
 
 static bool insert_into(BPTreeNode* self, float key, void* value) {
     // Insert key and value into a non-full node
+    // Behavior is undefined if the node is full
 
+#ifdef DEBUG
     if (!isinf(self->keys[MAX_WEIGHT - 1]))
         throw std::logic_error("node is full");
+#endif
 
     // find the first empty slot in the node
     size_t i = 0;

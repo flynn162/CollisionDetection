@@ -1,7 +1,7 @@
 CC := g++
 CXXFLAGS := -std=c++14
 ifeq ($(DEBUG),1)
-  CXXFLAGS += -g
+  CXXFLAGS += -g -DDEBUG
 else
   CXXFLAGS += -O2
 endif
