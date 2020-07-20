@@ -196,7 +196,13 @@ protected:
     void callback(void** buffer, size_t size) override {
         std::cout << "cb: size=" << size << "\n";
         for (size_t i = 0; i < size; i++) {
-            std::cout << "element " << buffer[i] << "\n";
+            std::cout << "element " << buffer[i];
+            MaybeHitbox* maybe = static_cast<MaybeHitbox*>(buffer[i]);
+            if (isnan(maybe->label)) {
+                std::cout << " is not a hitbox (it is a set)\n";
+            } else {
+                std::cout << " is a hitbox\n";
+            }
         }
     }
 };
@@ -207,11 +213,11 @@ int main() {
 
     Hitbox* hitbox = new Hitbox();
     Hitbox* hitbox2 = new Hitbox();
-    std::cout << "inserting " << hitbox << "\n";
+    hitbox->a1 = 100.0f;
+    hitbox2->a1 = 200.0f;
+    std::cout << "inserting " << hitbox << " with key 2.0f\n";
     bptree->insert(2.0f, hitbox);
-    bptree->insert(3.5f, hitbox);
-    std::cout << "inserting " << hitbox2;
-    std::cout << " and overriding key 2.0f\n";
+    std::cout << "inserting " << hitbox2 << " overriding key 2.0f\n";
     bptree->insert(2.0f, hitbox2);
     bptree->range_search(1.0f, 3.5f, acc);
 }
