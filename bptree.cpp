@@ -140,9 +140,31 @@ static void insertion_sort(BPTreeNode* self, size_t idx) {
     }
 }
 
-static bool insert_into(BPTreeNode* self, float key, void* value) {
-    // Insert key and value into a non-full node
-    // Behavior is undefined if the node is full
+template<class T>
+static void swap_values(BPTreeNode* self, size_t i, T** vo) {
+    throw std::logic_error("not implemented");
+}
+template<>
+void swap_values<void>(BPTreeNode* self, size_t i, void** vo) {
+    // leaf node
+    void* temp = self->values[i + 1].p;
+    self->values[i + 1].p = *vo;
+    *vo = temp;
+}
+template<>
+void swap_values<BPTreeNode>(BPTreeNode* self, size_t i, BPTreeNode** vo) {
+    // internal node
+    BPTreeNode* temp = self->values[i + 1].b;
+    self->values[i + 1].b = *vo;
+    *vo = temp;
+}
+
+template<class T>
+static bool insert_into(BPTreeNode* self, float key, T** value_out) {
+    // Insert key and value into a non-full node, and put the old value into
+    // `value_out`. If the key is new, put a nullptr into `value_out`.
+    //
+    // Behavior is undefined if the node is full.
 
 #ifdef DEBUG
     if (!isinf(self->keys[MAX_WEIGHT - 1]))
@@ -157,13 +179,7 @@ static bool insert_into(BPTreeNode* self, float key, void* value) {
     // insert key and value into the empty slot
     // or if they key already exists, it's original slot
     self->keys[i] = key;
-    if (self->next != self) {
-        // leaf node
-        self->values[i + 1].p = value;
-    } else {
-        // internal node
-        self->values[i + 1].b = static_cast<BPTreeNode*>(value);
-    }
+    swap_values<T>(self, i, value_out);
 
     // sort
     insertion_sort(self, i);
@@ -207,16 +223,17 @@ static BPTreeNode* split_node(BPTreeNode* self) {
     return new_node;
 }
 
-static BPTreeNode* insert(float key, void* value, BPTreeNode* curr) {
+static BPTreeNode* insert(float key, void** value_out, BPTreeNode* curr) {
     if (curr == nullptr) {
         // base case: empty leaf node
         auto new_node = make_bptree_node();
         new_node->keys[0] = key;
-        new_node->values[1].p = value;
+        new_node->values[1].p = *value_out;
+        *value_out = nullptr;
         return new_node;
     } else if (curr != curr->next) {
         // base case: leaf node
-        if (insert_into(curr, key, value))
+        if (insert_into<void>(curr, key, value_out))
             return split_node(curr);  // node becomes full
         else
             return nullptr;
@@ -228,32 +245,33 @@ static BPTreeNode* insert(float key, void* value, BPTreeNode* curr) {
         while (curr->keys[idx] <= key)
             idx++;
         // descent and perform recursion
-        BPTreeNode* new_node = insert(key, value, curr->values[idx].b);
+        BPTreeNode* new_node = insert(key, value_out, curr->values[idx].b);
         if (new_node != nullptr) {
             // insert the floating point key into the current node
-            if (insert_into(curr, key_to_insert, new_node))
+            if (insert_into<BPTreeNode>(curr, key_to_insert, &new_node))
                 return split_node(curr);
         }
         return nullptr;
     }
 }
 
-void BaseBPTree::insert_p(float key, void* value) {
-    float key_to_insert = this->root->keys[index_to_split_at()];
-    BPTreeNode* new_node = insert(key, value, this->root);
+void* BaseBPTree::replace_p(float key, void* value) {
+    float lifted_key = this->root->keys[index_to_split_at()];
+    BPTreeNode* new_node = insert(key, &value, this->root);
     if (new_node != nullptr) {
         // add a key to our root
-        if (insert_into(this->root, key_to_insert, new_node)) {
+        if (insert_into<BPTreeNode>(this->root, lifted_key, &new_node)) {
             // root node full, split
             BPTreeNode* new_node = split_node(this->root);
             // make a new root node
             BPTreeNode* new_root = make_bptree_node();
-            new_root->keys[0] = key_to_insert;
+            new_root->keys[0] = lifted_key;
             new_root->values[0].b = this->root;
             new_root->values[1].b = new_node;
             this->root = new_root;
         }
     }
+    return value;
 }
 
 void BaseBPTree::update_p(float old_key, float new_key, void* value) {

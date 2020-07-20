@@ -11,7 +11,7 @@ protected:
     BaseBPTree();
     virtual ~BaseBPTree();
 
-    void insert_p(float key, void* value);
+    void* replace_p(float key, void* value);
     void update_p(float old_key, float new_key, void* value);
     void delete_p(float key, void* match_value);
     void search_p(float key, Acc* out);
@@ -27,8 +27,8 @@ private:
 template<class T>
 class BPTree : public BaseBPTree {
 public:
-    void insert(float key, T value) {
-        this->insert_p(key, value);
+    T replace(float key, T value) {
+        return static_cast<T>(this->replace_p(key, value));
     }
     void update(float old_key, float new_key, T value) {
         this->update_p(old_key, new_key, value);

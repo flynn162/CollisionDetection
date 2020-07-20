@@ -24,12 +24,10 @@ struct alignas(64) SetHeader {
     Hitbox* data[HEADER_DATA_SIZE];
 };
 
-struct MaybeHitbox {
-    union {
-        float label;
-        Hitbox hb;
-        SetHeader s;
-    };
+union MaybeHitbox {
+    float label;
+    Hitbox hb;
+    SetHeader s;
 };
 
 constexpr bool structs_are_aligned() {
@@ -70,7 +68,7 @@ static void delete_set_node(SetNode* self) {
     delete self;
 }
 
-static SetNode* add(SetHeader* self, Hitbox* value) {
+static void add(SetHeader* self, Hitbox* value) {
     if (self->last == nullptr) {
         if (self->length_of_last_node < HEADER_DATA_SIZE) {
             self->data[self->length_of_last_node] = value;
@@ -192,6 +190,33 @@ static void del(SetHeader* self, Hitbox* value) {
 }
 
 class HitboxIndex : public BPTree<Hitbox*> {
+public:
+    void insert(float key, Hitbox* value) {
+        auto maybe = (MaybeHitbox*) (this->super::replace(key, value));
+        if (maybe != nullptr) {
+            // Something got replaced. Need to re-add
+            if (isnan(maybe->label)) {
+                // it is a set that got replaced
+                add(&(maybe->s), value);
+                // make the type system happy
+                this->super::replace(key, &(maybe->hb));
+            } else {
+                // it is hitbox that got replaced
+                auto new_set = make_set_header(&(maybe->hb));
+                add(new_set, value);
+                // make the type system happy
+                auto ptr = (MaybeHitbox*) new_set;
+                this->super::replace(key, &(ptr->hb));
+            }
+        }
+    }
+    void update(float old_key, float new_key, Hitbox* value) {
+        // not implemented
+    }
+    void del(float key, Hitbox* match_value) {
+        // not implemented
+    }
+
 protected:
     void callback(void** buffer, size_t size) override {
         std::cout << "cb: size=" << size << "\n";
@@ -205,6 +230,8 @@ protected:
             }
         }
     }
+private:
+    using super = BPTree<Hitbox*>;
 };
 
 int main() {
