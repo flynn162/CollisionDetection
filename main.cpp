@@ -1,14 +1,11 @@
 #include <iostream>
 #include <math.h>
 #include "bptree.hpp"
+#include "hitbox.hpp"
 
 constexpr size_t NODE_DATA_SIZE = 6;
 constexpr size_t HEADER_DATA_SIZE = 5;
 
-struct Hitbox {
-    // W = [a1, b1] X [a2, b2]
-    float a1, b1, a2, b2;
-};
 
 struct alignas(64) SetNode {
     Hitbox* data[NODE_DATA_SIZE];
@@ -189,50 +186,177 @@ static void del(SetHeader* self, Hitbox* value) {
     }
 }
 
-class HitboxIndex : public BPTree<Hitbox*> {
-public:
-    void insert(float key, Hitbox* value) {
-        auto maybe = (MaybeHitbox*) (this->super::replace(key, value));
-        if (maybe != nullptr) {
-            // Something got replaced. Need to re-add
-            if (isnan(maybe->label)) {
-                // it is a set that got replaced
-                add(&(maybe->s), value);
-                // make the type system happy
-                this->super::replace(key, &(maybe->hb));
-            } else {
-                // it is hitbox that got replaced
-                auto new_set = make_set_header(&(maybe->hb));
-                add(new_set, value);
-                // make the type system happy
-                auto ptr = (MaybeHitbox*) new_set;
-                this->super::replace(key, &(ptr->hb));
-            }
+enum State : unsigned char {
+    IN_BUFFER,
+    IN_SET_HEADER,
+    IN_SET_NODE,
+    ITERATOR_ENDED
+};
+
+enum Alphabet : int {
+    CHAR_ELEMENT = 'A',
+    CHAR_OPEN = '(',
+    CHAR_CLOSE = ')',
+    CHAR_COLON = ':',
+    CHAR_ARROW = '>',
+    CHAR_EOF = '$'
+};
+
+HitboxIterator::HitboxIterator(void** buffer, size_t size) {
+    this->buffer = buffer;
+    this->size = size;
+    this->holding_slot = nullptr;
+    this->pointer = nullptr;
+    this->index_buf = 0;
+    this->counter = 0;
+    this->length_of_last_node = 0;
+    this->state = IN_BUFFER;
+}
+
+void HitboxIterator::to_state_in_set_header(void* pointer) {
+    this->state = IN_SET_HEADER;
+    this->pointer = pointer;
+    auto header = static_cast<SetHeader*>(pointer);
+    this->length_of_last_node = header->length_of_last_node;
+    if (header->first == nullptr) {
+        this->counter = this->length_of_last_node;
+    } else {
+        this->counter = HEADER_DATA_SIZE;
+    }
+}
+
+void HitboxIterator::to_state_in_buffer() {
+    this->state = IN_BUFFER;
+    this->index_buf++;
+}
+
+void HitboxIterator::to_state_in_set_node(void* pointer) {
+    this->state = IN_SET_NODE;
+    this->pointer = pointer;
+    auto node = static_cast<SetNode*>(pointer);
+    if (node->next == nullptr) {
+        this->counter = this->length_of_last_node;
+    } else {
+        this->counter = NODE_DATA_SIZE;
+    }
+}
+
+int HitboxIterator::generate_input() {
+    if (this->state == IN_BUFFER) {
+        if (this->index_buf == this->size) {
+            this->state = ITERATOR_ENDED;
+            return CHAR_EOF;
         }
-    }
-    void update(float old_key, float new_key, Hitbox* value) {
-        // not implemented
-    }
-    void del(float key, Hitbox* match_value) {
-        // not implemented
+
+        auto maybe = (MaybeHitbox*) (this->buffer[this->index_buf]);
+        if (isnan(maybe->label)) {
+            // set header
+            this->to_state_in_set_header(&(maybe->s));
+            return CHAR_OPEN;
+        } else {
+            // hitbox
+            this->holding_slot = &(maybe->hb);
+            this->to_state_in_buffer();
+            return CHAR_ELEMENT;
+        }
     }
 
-protected:
-    void callback(void** buffer, size_t size) override {
-        std::cout << "cb: size=" << size << "\n";
-        for (size_t i = 0; i < size; i++) {
-            std::cout << "element " << buffer[i];
-            MaybeHitbox* maybe = static_cast<MaybeHitbox*>(buffer[i]);
-            if (isnan(maybe->label)) {
-                std::cout << " is not a hitbox (it is a set)\n";
-            } else {
-                std::cout << " is a hitbox\n";
-            }
+    else if (this->state == IN_SET_HEADER) {
+        auto header = static_cast<SetHeader*>(this->pointer);
+        if (counter > 0) {
+            // iterate through remaining elements in the header
+            this->holding_slot = header->data[counter - 1];
+            this->counter--;
+            return CHAR_ELEMENT;
+        } else if (header->first == nullptr) {
+            // there are not set nodes
+            this->to_state_in_buffer();
+            return CHAR_CLOSE;
+        } else {
+            // go to the first set node
+            this->to_state_in_set_node(header->first);
+            return CHAR_COLON;
         }
     }
-private:
-    using super = BPTree<Hitbox*>;
-};
+
+    else if (this->state == IN_SET_NODE) {
+        auto node = static_cast<SetNode*>(this->pointer);
+        if (this->counter > 0) {
+            // iterate through remaining elements in the node
+            this->holding_slot = node->data[counter - 1];
+            this->counter--;
+            return CHAR_ELEMENT;
+        } else if (node->next == nullptr) {
+            // this is the last node
+            this->to_state_in_buffer();
+            return CHAR_CLOSE;
+        } else {
+            // go to the next node
+            this->to_state_in_set_node(node->next);
+            return CHAR_ARROW;
+        }
+    }
+
+    else {
+        return CHAR_EOF;
+    }
+}
+
+bool HitboxIterator::has_next() {
+    auto input = this->generate_input();
+    while (input != CHAR_EOF) {
+        if (input == CHAR_ELEMENT)
+            return true;
+        else
+            input = this->generate_input();
+    }
+    return false;
+}
+
+
+using super = BPTree<HitboxIndex, HitboxIndexTypes>;
+using Acc = BaseBPTree::Acc;
+
+void HitboxIndex::insert(float key, Hitbox* value) {
+    auto maybe = (MaybeHitbox*) (this->super::replace(key, value));
+    if (maybe != nullptr) {
+        // Something got replaced. Need to re-add
+        if (isnan(maybe->label)) {
+            // it is a set that got replaced
+            add(&(maybe->s), value);
+            // make the type system happy
+            this->super::replace(key, &(maybe->hb));
+        } else {
+            // it is hitbox that got replaced
+            auto new_set = make_set_header(&(maybe->hb));
+            add(new_set, value);
+            // make the type system happy
+            auto ptr = (MaybeHitbox*) new_set;
+            this->super::replace(key, &(ptr->hb));
+        }
+    }
+}
+
+void HitboxIndex::update(float old_key, float new_key, Hitbox* value) {
+    // not implemented
+}
+
+void HitboxIndex::del(float key, Hitbox* match_value) {
+    // not implemented
+}
+
+void HitboxIndex::ball_query(float mag, float rad, float R, Acc* acc) {
+    float temp = rad + R;
+    this->range_search(mag - temp, mag + temp, acc);
+}
+
+void HitboxIndex::search_callback(HitboxIterator* iter) {
+    std::cout << "search callback: ";
+    while (iter->has_next()) {
+        std::cout << iter->next() << " ";
+    }
+    std::cout << "\n";
+}
 
 int main() {
     auto bptree = new HitboxIndex();

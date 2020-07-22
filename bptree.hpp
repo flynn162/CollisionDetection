@@ -24,8 +24,17 @@ private:
 };
 
 
-template<class T>
+template<class CRTP, class Types>
 class BPTree : public BaseBPTree {
+private:
+    // These fields are required in your `Types` class
+    using T = typename Types::element_type;
+    using Iterator = typename Types::iterator_type;
+
+protected:
+    // Implement this in your derived class
+    void search_callback(Iterator* iter) = delete;
+
 public:
     T replace(float key, T value) {
         return static_cast<T>(this->replace_p(key, value));
@@ -41,6 +50,10 @@ public:
     }
     void range_search(float k0, float k1, BaseBPTree::Acc* acc) {
         this->range_search_p(k0, k1, acc);
+    }
+    void callback(void** buffer, size_t size) override {
+        Iterator iter = Iterator(buffer, size);
+        static_cast<CRTP*>(this)->search_callback(&iter);
     }
 };
 
