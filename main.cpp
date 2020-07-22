@@ -203,13 +203,13 @@ enum Alphabet : int {
 };
 
 HitboxIterator::HitboxIterator(void** buffer, size_t size) {
+    // store the info
     this->buffer = buffer;
     this->size = size;
+    // this slot is shared among different states; need initialization
     this->holding_slot = nullptr;
-    this->pointer = nullptr;
+    // only need to initialize the IN_BUFFER part of this struct
     this->index_buf = 0;
-    this->counter = 0;
-    this->length_of_last_node = 0;
     this->state = IN_BUFFER;
 }
 
