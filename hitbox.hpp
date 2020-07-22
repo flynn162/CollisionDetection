@@ -38,23 +38,36 @@ private:
     unsigned char state;
 };
 
-class HitboxIndexTypes {
-public:
-    // CRTP-required information
-    using element_type = Hitbox*;
-    using iterator_type = HitboxIterator;
-};
-
-class HitboxIndex : public BPTree<HitboxIndex, HitboxIndexTypes> {
-//class BaseHitboxIndex : public BaseBPTree {
+class BaseHitboxIndex : public BaseBPTree {
 public:
     void insert(float key, Hitbox* value);
     void update(float old_key, float new_key, Hitbox* value);
     void del(float key, Hitbox* match_value);
     void ball_query(float mag, float rad, float R, BaseBPTree::Acc* acc);
 
+    virtual ~BaseHitboxIndex() = default;
+
 protected:
-    // temporary
-    friend class BPTree<HitboxIndex, HitboxIndexTypes>;
-    void search_callback(HitboxIterator* iter);
+    // Base class is not to be used directly
+    BaseHitboxIndex() = default;
+};
+
+template<class CRTP>
+class HitboxIndex : public BaseHitboxIndex {
+protected:
+    // Implement this in your derived class
+    void search_callback(HitboxIterator* iter) = delete;
+
+    void callback(void** buffer, size_t size) override {
+        HitboxIterator iter = HitboxIterator(buffer, size);
+        static_cast<CRTP*>(this)->search_callback(&iter);
+    }
+
+public:
+    HitboxIndex() = default;
+    virtual ~HitboxIndex() = default;
+
+    void range_search(float k0, float k1, BaseBPTree::Acc* acc) {
+        this->range_search_p(k0, k1, acc);
+    }
 };

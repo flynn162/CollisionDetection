@@ -1,16 +1,20 @@
 #include <iostream>
 #include "hitbox.hpp"
 
-void HitboxIndex::search_callback(HitboxIterator* iter) {
-    std::cout << "search callback: ";
-    while (iter->has_next()) {
-        std::cout << iter->next() << " ";
+class MyHitboxes : public HitboxIndex<MyHitboxes> {
+public:
+    void search_callback(HitboxIterator* iter) {
+        std::cout << "search callback: ";
+        while (iter->has_next()) {
+            std::cout << iter->next() << " ";
+        }
+        std::cout << "\n";
     }
-    std::cout << "\n";
-}
+};
+
 
 int main() {
-    auto bptree = new HitboxIndex();
+    auto bptree = new MyHitboxes();
     auto acc = bptree->make_iteration_buffer();
 
     Hitbox* hitbox = new Hitbox();

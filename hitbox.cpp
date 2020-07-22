@@ -314,38 +314,35 @@ bool HitboxIterator::has_next() {
 }
 
 
-using super = BPTree<HitboxIndex, HitboxIndexTypes>;
+using super = BaseBPTree;
 using Acc = BaseBPTree::Acc;
 
-void HitboxIndex::insert(float key, Hitbox* value) {
-    auto maybe = (MaybeHitbox*) (this->super::replace(key, value));
+void BaseHitboxIndex::insert(float key, Hitbox* value) {
+    auto maybe = (MaybeHitbox*) (this->super::replace_p(key, value));
     if (maybe != nullptr) {
         // Something got replaced. Need to re-add
         if (isnan(maybe->label)) {
             // it is a set that got replaced
             add(&(maybe->s), value);
-            // make the type system happy
-            this->super::replace(key, &(maybe->hb));
+            this->super::replace_p(key, maybe);
         } else {
             // it is hitbox that got replaced
             auto new_set = make_set_header(&(maybe->hb));
             add(new_set, value);
-            // make the type system happy
-            auto ptr = (MaybeHitbox*) new_set;
-            this->super::replace(key, &(ptr->hb));
+            this->super::replace_p(key, new_set);
         }
     }
 }
 
-void HitboxIndex::update(float old_key, float new_key, Hitbox* value) {
+void BaseHitboxIndex::update(float old_key, float new_key, Hitbox* value) {
     // not implemented
 }
 
-void HitboxIndex::del(float key, Hitbox* match_value) {
+void BaseHitboxIndex::del(float key, Hitbox* match_value) {
     // not implemented
 }
 
-void HitboxIndex::ball_query(float mag, float rad, float R, Acc* acc) {
+void BaseHitboxIndex::ball_query(float mag, float rad, float R, Acc* acc) {
     float temp = rad + R;
-    this->range_search(mag - temp, mag + temp, acc);
+    this->range_search_p(mag - temp, mag + temp, acc);
 }
