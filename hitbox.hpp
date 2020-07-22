@@ -46,6 +46,7 @@ public:
 };
 
 class HitboxIndex : public BPTree<HitboxIndex, HitboxIndexTypes> {
+//class BaseHitboxIndex : public BaseBPTree {
 public:
     void insert(float key, Hitbox* value);
     void update(float old_key, float new_key, Hitbox* value);
