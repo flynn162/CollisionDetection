@@ -1,2 +1,7 @@
 *.o
 program
+# Doxygen
+/html/
+/latex/
+# scratch folder
+/scratch/
