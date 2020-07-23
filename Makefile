@@ -7,8 +7,14 @@ else
 endif
 
 program := program
+test := test
 cpp-files := $(sort $(wildcard *.cpp))
+test-cpp-files := $(sort $(wildcard unit_test/*.cpp))
 object-files := $(cpp-files:.cpp=.o)
+test-object-files := $(test-cpp-files:.cpp=.o)
+test-object-files += $(filter-out main.o, $(object-files))
+test-object-files += gtest/libgtest.a gtest/libgtest_main.a
+
 
 # Function definitions
 
@@ -17,24 +23,26 @@ get-object-dependencies = $(shell { \
   } | sed 's:\\$$::g' \
 )
 
-compile-command = $(CXX) $(CXXFLAGS) -o $2 -c $1
 define compile-to-object =
   $(call get-object-dependencies, $1)
-	$(CXX) $(CXXFLAGS) -o $$@ -c $$<
+	$(CXX) $(CXXFLAGS) -Igtest/include -o $$@ -c $$<
 endef
 
 # Targets and rules
 
-all: $(program)
+all: $(program) $(test)
 
-$(foreach cpp, $(cpp-files), \
+$(foreach cpp, $(cpp-files) $(test-cpp-files), \
   $(eval $(call compile-to-object, $(cpp))) \
 )
 
 $(program): $(object-files)
-	$(CC) $(CXXFLAGS) $^ -o $@
+	$(CC) $(LDFLAGS) $^ -o $@
+
+$(test): $(test-object-files)
+	$(CC) -pthread $(LDFLAGS) $^ -o $@
 
 clean:
-	rm -f *.o $(program)
+	rm -f *.o unit_test/*.o $(program) $(test)
 
 .PHONY: all clean

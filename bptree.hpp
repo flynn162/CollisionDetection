@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stddef.h>
+
 class BaseBPTree {
 public:
     class Acc;

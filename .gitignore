@@ -1,7 +1,10 @@
 *.o
 program
+test
 # Doxygen
 /html/
 /latex/
 # scratch folder
 /scratch/
+# Google Test folder
+/gtest/
