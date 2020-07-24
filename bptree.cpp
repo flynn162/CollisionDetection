@@ -84,6 +84,10 @@ BaseBPTree::Acc* BaseBPTree::make_iteration_buffer() {
     return new BaseBPTree::Acc(this);
 }
 
+void BaseBPTree::destroy_iteration_buffer(Acc* acc) {
+    delete acc;
+}
+
 static inline BPTreeNode* find_leaf(float key, BPTreeNode* curr) {
     // Tail recursive helper method for finding the leaf node
     // The returned leaf node has keys greater than or equal to `key`

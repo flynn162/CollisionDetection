@@ -9,6 +9,7 @@ public:
     virtual ~BaseBPTree();
 
     Acc* make_iteration_buffer();
+    void destroy_iteration_buffer(Acc* acc);
 
 protected:
     BaseBPTree();

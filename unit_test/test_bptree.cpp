@@ -1,10 +1,16 @@
 #include <gtest/gtest.h>
 #include <math.h>
 #include <stdexcept>
+#include <algorithm>
+#include <array>
+#include <random>
+#include <time.h>
 #include "../hitbox.hpp"
 
 class MyHitboxes : public HitboxIndex<MyHitboxes> {
 public:
+    virtual ~MyHitboxes() = default;
+
     void search_callback(HitboxIterator* iter) {
         while (iter->has_next()) {
             Hitbox* box = iter->next();
@@ -16,8 +22,8 @@ public:
 class BPTestFixture : public ::testing::Test {
 public:
     // static test data
-    static constexpr float keys[] = {1.0f, 1.5f, 2.0f, 2.5f, 3.0f, 3.5f};
-    static constexpr size_t size = sizeof(keys) / sizeof(float);
+    static float* keys;
+    static size_t size;
     static Hitbox* values;
 
     bool is_hitbox_marked(float key) {
@@ -38,6 +44,21 @@ public:
         }
     }
 
+    void perform_range_search() {
+        auto acc = this->data->make_iteration_buffer();
+        this->data->range_search(1.5f, 2.5f, acc);
+
+        EXPECT_TRUE(this->is_hitbox_marked(1.5f));
+        EXPECT_TRUE(this->is_hitbox_marked(2.0f));
+        EXPECT_TRUE(this->is_hitbox_marked(2.5f));
+
+        EXPECT_FALSE(this->is_hitbox_marked(1.0f));
+        EXPECT_FALSE(this->is_hitbox_marked(3.0f));
+        EXPECT_FALSE(this->is_hitbox_marked(3.5f));
+
+        this->data->destroy_iteration_buffer(acc);
+    }
+
 protected:
     void SetUp() override {
         // allocate test data (once)
@@ -53,17 +74,31 @@ protected:
         delete this->data;
     }
 
-private:
     MyHitboxes* data;
 };
 
 Hitbox* BPTestFixture::values = nullptr;
+float* BPTestFixture::keys = new float[6]{1.0f, 1.5f, 2.0f, 2.5f, 3.0f, 3.5f};
+size_t BPTestFixture::size = 6;
 
 
 TEST_F(BPTestFixture, InsertionAndRetrieval) {
+    for (size_t i = 0; i < this->size; i++) {
+        this->data->insert(this->keys[i], &(this->values[i]));
+    }
+    this->perform_range_search();
 }
 
 TEST_F(BPTestFixture, RandomInsertionAndRetrieval) {
+    std::array<size_t, 6> indices {0, 1, 2, 3, 4, 5};
+    std::default_random_engine rng;
+    rng.seed((int) time(NULL));
+    shuffle(indices.begin(), indices.end(), rng);
+
+    for (size_t i : indices) {
+        this->data->insert(this->keys[i], &(this->values[i]));
+    }
+    this->perform_range_search();
 }
 
 TEST_F(BPTestFixture, InsertingOverlappingKeys) {

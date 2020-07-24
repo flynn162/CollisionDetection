@@ -3,6 +3,8 @@
 
 class MyHitboxes : public HitboxIndex<MyHitboxes> {
 public:
+    virtual ~MyHitboxes() = default;
+
     void search_callback(HitboxIterator* iter) {
         std::cout << "search callback: ";
         while (iter->has_next()) {
