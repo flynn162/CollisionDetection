@@ -11,7 +11,10 @@ public:
     void search_callback(HitboxIterator* iter) {
         while (iter->has_next()) {
             Hitbox* box = iter->next();
-            box->a2 = INFINITY;  // mark the hitbox
+            if (isinf(box->a2))
+                throw std::logic_error("hitbox is already marked");
+            else
+                box->a2 = INFINITY;  // mark the hitbox
         }
     }
 };
@@ -100,7 +103,67 @@ TEST_F(BPTestFixture, RandomInsertionAndRetrieval) {
 }
 
 TEST_F(BPTestFixture, InsertingOverlappingKeys) {
+    // key=2.0f
+    this->data->insert(2.0f, &(this->values[0]));
+    this->data->insert(2.0f, &(this->values[1]));
+    this->data->insert(2.0f, &(this->values[2]));
+    // key=1.5f
+    this->data->insert(1.5f, &(this->values[3]));
+    this->data->insert(1.5f, &(this->values[4]));
+
+    auto acc = this->data->make_iteration_buffer();
+    this->data->range_search(1.0f, 2.0f, acc);
+
+    // check that hitboxes 0--4 are marked
+    for (size_t i = 0; i < 4; i++) {
+        ASSERT_TRUE(isinf(this->values[i].a2));
+    }
+
+    this->data->destroy_iteration_buffer(acc);
 }
 
-TEST_F(BPTestFixture, InsertingManyOverlappingKeys) {
+TEST_F(BPTestFixture, InsertingOverlappingKeys2) {
+    for (size_t i = 0; i < this->size; i++) {
+        this->data->insert(2.0f, &(this->values[i]));
+    }
+    auto acc = this->data->make_iteration_buffer();
+    this->data->range_search(1.5f, 2.5f, acc);
+    // check that all hitboxes are marked
+    for (size_t i = 0; i < this->size; i++) {
+        ASSERT_TRUE(isinf(this->values[i].a2));
+    }
+    this->data->destroy_iteration_buffer(acc);
+}
+
+TEST(TestBPlusTree, InsertingManyOverlappingKeys) {
+    class Counter : public HitboxIndex<Counter> {
+    public:
+        void search_callback(HitboxIterator* iter) {
+            while (iter->has_next()) {
+                auto hitbox = iter->next();
+                hitbox->a2 += 1.0f;
+            }
+        }
+    };
+
+    Hitbox* hitbox = new Hitbox();
+    hitbox->a1 = 0;
+    hitbox->b1 = 0;
+    hitbox->a2 = 0;
+    hitbox->b2 = 0;
+
+    auto bptree = new Counter();
+    auto acc = bptree->make_iteration_buffer();
+
+    // insert the same hitbox 71 times, using the same key
+    for (size_t i = 0; i < 71; i++) {
+        bptree->insert(2.0f, hitbox);
+    }
+    // perform a range search and count the hits
+    bptree->range_search(1.5f, 2.5f, acc);
+    EXPECT_TRUE(hitbox->a2 >= 70.5f && hitbox->a2 <= 71.5f);
+
+    bptree->destroy_iteration_buffer(acc);
+    delete bptree;
+    delete hitbox;
 }
