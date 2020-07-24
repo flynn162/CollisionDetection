@@ -167,3 +167,37 @@ TEST(TestBPlusTree, InsertingManyOverlappingKeys) {
     delete bptree;
     delete hitbox;
 }
+
+TEST(TestBPlusTree, RangeSearchInEmptyTree) {
+    class DoNotCall : public HitboxIndex<MyHitboxes> {
+    public:
+        void search_callback(HitboxIterator* iter) {
+            throw std::logic_error("should not be called");
+        }
+    };
+
+    auto bptree = new DoNotCall();
+    auto acc = bptree->make_iteration_buffer();
+    bptree->range_search(1.5f, 2.5f, acc);
+    bptree->destroy_iteration_buffer(acc);
+    delete bptree;
+}
+
+TEST(TestBPlusTree, RangeSearchInSingleElementTree) {
+    Hitbox* hitbox = new Hitbox();
+    hitbox->a1 = 1.0f;
+    hitbox->b1 = 1.0f;
+    hitbox->a2 = 1.0f;
+    hitbox->b2 = 1.0f;
+
+    auto bptree = new MyHitboxes();
+    auto acc = bptree->make_iteration_buffer();
+    bptree->insert(12.0f, hitbox);
+    bptree->range_search(11.0f, 12.0f, acc);
+
+    EXPECT_TRUE(isinf(hitbox->a2));  // check if hitbox is marked
+
+    bptree->destroy_iteration_buffer(acc);
+    delete bptree;
+    delete hitbox;
+}
