@@ -1,10 +1,9 @@
 #include <gtest/gtest.h>
 #include <math.h>
 #include <stdexcept>
-#include <algorithm>
-#include <array>
+#include <numeric>
+#include <vector>
 #include <random>
-#include <time.h>
 #include "../hitbox.hpp"
 
 class MyHitboxes : public HitboxIndex<MyHitboxes> {
@@ -90,9 +89,10 @@ TEST_F(BPTestFixture, InsertionAndRetrieval) {
 }
 
 TEST_F(BPTestFixture, RandomInsertionAndRetrieval) {
-    std::array<size_t, 6> indices {0, 1, 2, 3, 4, 5};
-    std::default_random_engine rng;
-    rng.seed((int) time(NULL));
+    // Shuffle a vec: https://en.cppreference.com/w/cpp/algorithm/iota
+    std::vector<size_t> indices(this->size);
+    std::iota(indices.begin(), indices.end(), 0);
+    auto rng = std::mt19937{std::random_device{}()};
     shuffle(indices.begin(), indices.end(), rng);
 
     for (size_t i : indices) {
