@@ -8,8 +8,6 @@
 
 class MyHitboxes : public HitboxIndex<MyHitboxes> {
 public:
-    virtual ~MyHitboxes() = default;
-
     void search_callback(HitboxIterator* iter) {
         while (iter->has_next()) {
             Hitbox* box = iter->next();
