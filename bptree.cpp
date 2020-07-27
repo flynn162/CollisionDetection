@@ -307,6 +307,15 @@ void* BaseBPTree::replace_p(float key, void* value) {
     return value;
 }
 
+void BaseBPTree::test_if_root_is_non_degenerate() {
+    auto ptr = this->root->next;
+    // One of the following must be true:
+    // 1. The root is an internal node.
+    // 2. The root is a leaf node with no siblings.
+    if (ptr != this->root && ptr != nullptr)
+        throw std::logic_error("root node is broken (degenerate)");
+}
+
 void BaseBPTree::update_p(float old_key, float new_key, void* value) {
     // not implemented
 }

@@ -104,6 +104,7 @@ TEST_F(BPTestFixture, InsertionAndRetrieval) {
         this->data->insert(this->keys[i], &(this->values[i]));
     }
     this->perform_range_search();
+    this->data->test_if_root_is_non_degenerate();
 }
 
 std::vector<size_t>* make_shuffled_vector(size_t size) {
@@ -121,6 +122,7 @@ TEST_F(BPTestFixture, RandomInsertionAndRetrieval) {
         this->data->insert(this->keys[i], &(this->values[i]));
     }
     this->perform_range_search();
+    this->data->test_if_root_is_non_degenerate();
 }
 
 TEST_F(BPTestFixture, InsertingOverlappingKeys) {
@@ -137,6 +139,7 @@ TEST_F(BPTestFixture, InsertingOverlappingKeys) {
 
     // check that hitboxes 0--4 are marked
     EXPECT_ALL_MARKED(this->values, 4);
+    this->data->test_if_root_is_non_degenerate();
 
     this->data->destroy_iteration_buffer(acc);
 }
@@ -149,6 +152,7 @@ TEST_F(BPTestFixture, InsertingOverlappingKeys2) {
     this->data->range_search(1.5f, 2.5f, acc);
     // check that all hitboxes are marked
     EXPECT_ALL_MARKED(this->values, this->size);
+    this->data->test_if_root_is_non_degenerate();
     this->data->destroy_iteration_buffer(acc);
 }
 
@@ -167,6 +171,7 @@ TEST(TestBPlusTree, InsertingManyOverlappingKeys) {
     // perform a range search and check the markings
     bptree->range_search(1.5f, 2.0f, acc);
     EXPECT_ALL_MARKED(array, SIZE);
+    bptree->test_if_root_is_non_degenerate();
 
     bptree->destroy_iteration_buffer(acc);
     delete bptree;
@@ -186,6 +191,7 @@ TEST(TestBPlusTree, InsertingManyKeysInReverseOrder) {
     bptree->test_if_values_are_sorted(1.0f);
     bptree->range_search(1.0f, 100.0f, acc);
     EXPECT_ALL_MARKED(array, SIZE);
+    bptree->test_if_root_is_non_degenerate();
 
     bptree->destroy_iteration_buffer(acc);
     delete bptree;
@@ -220,6 +226,7 @@ TEST(TestBPlusTree, RangeSearchInSingleElementTree) {
     bptree->range_search(11.0f, 12.0f, acc);
 
     EXPECT_TRUE(isinf(hitbox->a2));  // check if hitbox is marked
+    bptree->test_if_root_is_non_degenerate();
 
     bptree->destroy_iteration_buffer(acc);
     delete bptree;

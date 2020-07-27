@@ -13,6 +13,7 @@ public:
 
     // Unit test helpers
     void test_if_values_are_sorted(float since);
+    void test_if_root_is_non_degenerate();
 
 protected:
     BaseBPTree();
