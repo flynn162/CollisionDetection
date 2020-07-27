@@ -200,6 +200,30 @@ TEST(TestBPlusTree, InsertingManyKeysInReverseOrder) {
     delete array;
 }
 
+TEST(TestBPlusTree, InsertingManyKeysInRandomOrder) {
+    constexpr size_t SIZE = 1000;
+    Hitbox* array = make_hitbox_array(SIZE);
+    auto indices = make_shuffled_vector(SIZE);
+    auto bptree = new MyHitboxes();
+    for (size_t i : *indices) {
+        bptree->insert(i * 3, &(array[i]));
+    }
+    bptree->test_if_values_are_sorted(-100.0f);
+    bptree->test_if_root_is_non_degenerate();
+
+    auto acc = bptree->make_iteration_buffer();
+    bptree->range_search(100.0f, 333.3f, acc);
+    bptree->range_search(0.0f, 99.5f, acc);
+    bptree->range_search(333.4f, 1234.5f, acc);
+    bptree->range_search(1234.25f, 9999.0f, acc);
+    EXPECT_ALL_MARKED(array, SIZE);
+
+    bptree->destroy_iteration_buffer(acc);
+    delete bptree;
+    delete array;
+    delete indices;
+}
+
 TEST(TestBPlusTree, RangeSearchInEmptyTree) {
     class DoNotCall : public HitboxIndex<MyHitboxes> {
     public:
