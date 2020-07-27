@@ -262,17 +262,7 @@ static BPTreeNode* insert(float* key_out, void** value_out, BPTreeNode* curr) {
     // "old value" will be written to `value_out`; otherwise, a nullptr will be
     // written to `value_out`.
 
-    if (curr == nullptr) {
-        // base case: empty leaf node
-        // `new_node` becomes the last internal node
-        auto new_node = make_bptree_node();
-        new_node->keys[0] = *key_out;
-        new_node->values[1].p = *value_out;
-        *value_out = nullptr;
-        // How to set the `next` field?
-        // Maybe merge this case with the recursive case?
-        return new_node;
-    } else if (curr != curr->next) {
+    if (curr != curr->next) {
         // base case: leaf node
         if (insert_into<void>(curr, *key_out, value_out))
             return split_node(curr, key_out);  // node becomes full
@@ -285,6 +275,10 @@ static BPTreeNode* insert(float* key_out, void** value_out, BPTreeNode* curr) {
         size_t i = 0;
         while (curr->keys[i] <= kxchg) i++;
         // descend into a child node
+#ifdef DEBUG
+        if (curr->values[i].b == nullptr)
+            throw std::logic_error("corrupted internal node");
+#endif
         BPTreeNode* new_node = insert(&kxchg, value_out, curr->values[i].b);
         if (new_node != nullptr) {
             // a new node was created; the lifted key was written into kxchg
