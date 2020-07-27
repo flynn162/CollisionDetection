@@ -123,6 +123,7 @@ TEST_F(BPTestFixture, RandomInsertionAndRetrieval) {
     }
     this->perform_range_search();
     this->data->test_if_root_is_non_degenerate();
+    delete indices;
 }
 
 TEST_F(BPTestFixture, InsertingOverlappingKeys) {
@@ -182,16 +183,17 @@ TEST(TestBPlusTree, InsertingManyKeysInReverseOrder) {
     constexpr size_t SIZE = 97;
     Hitbox* array = make_hitbox_array(SIZE);
     auto bptree = new MyHitboxes();
-    auto acc = bptree->make_iteration_buffer();
     for (size_t i = 0; i < SIZE; i++) {
         array[i].b1 = 99.0f - i;
         bptree->insert(99.0f - i, &(array[i]));
     }
 
     bptree->test_if_values_are_sorted(1.0f);
+    bptree->test_if_root_is_non_degenerate();
+
+    auto acc = bptree->make_iteration_buffer();
     bptree->range_search(1.0f, 100.0f, acc);
     EXPECT_ALL_MARKED(array, SIZE);
-    bptree->test_if_root_is_non_degenerate();
 
     bptree->destroy_iteration_buffer(acc);
     delete bptree;
