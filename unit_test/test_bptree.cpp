@@ -19,6 +19,23 @@ public:
     }
 };
 
+static Hitbox* make_hitbox_array(size_t size) {
+    Hitbox* array = new Hitbox[size];
+    for (size_t i = 0; i < size; i++) {
+        array[i].a1 = i;
+        array[i].b1 = 0;
+        array[i].a2 = 0;
+        array[i].b2 = 0;
+    }
+    return array;
+}
+
+static void EXPECT_ALL_MARKED(Hitbox* array, size_t size) {
+    for (size_t i = 0; i < size; i++) {
+        EXPECT_TRUE(isinf(array[i].a2)) << "i=" << i;
+    }
+}
+
 class BPTestFixture : public ::testing::Test {
 public:
     // static test data
@@ -89,14 +106,18 @@ TEST_F(BPTestFixture, InsertionAndRetrieval) {
     this->perform_range_search();
 }
 
-TEST_F(BPTestFixture, RandomInsertionAndRetrieval) {
-    // Shuffle a vec: https://en.cppreference.com/w/cpp/algorithm/iota
-    std::vector<size_t> indices(this->size);
-    std::iota(indices.begin(), indices.end(), 0);
+std::vector<size_t>* make_shuffled_vector(size_t size) {
+    auto indices = new std::vector<size_t>(size);
+    std::iota(indices->begin(), indices->end(), 0);
     auto rng = std::mt19937{std::random_device{}()};
-    shuffle(indices.begin(), indices.end(), rng);
+    shuffle(indices->begin(), indices->end(), rng);
+    return indices;
+}
 
-    for (size_t i : indices) {
+TEST_F(BPTestFixture, RandomInsertionAndRetrieval) {
+    auto indices = make_shuffled_vector(this->size);
+
+    for (size_t i : *indices) {
         this->data->insert(this->keys[i], &(this->values[i]));
     }
     this->perform_range_search();
@@ -115,9 +136,7 @@ TEST_F(BPTestFixture, InsertingOverlappingKeys) {
     this->data->range_search(1.0f, 2.0f, acc);
 
     // check that hitboxes 0--4 are marked
-    for (size_t i = 0; i < 4; i++) {
-        ASSERT_TRUE(isinf(this->values[i].a2));
-    }
+    EXPECT_ALL_MARKED(this->values, 4);
 
     this->data->destroy_iteration_buffer(acc);
 }
@@ -129,43 +148,48 @@ TEST_F(BPTestFixture, InsertingOverlappingKeys2) {
     auto acc = this->data->make_iteration_buffer();
     this->data->range_search(1.5f, 2.5f, acc);
     // check that all hitboxes are marked
-    for (size_t i = 0; i < this->size; i++) {
-        ASSERT_TRUE(isinf(this->values[i].a2));
-    }
+    EXPECT_ALL_MARKED(this->values, this->size);
     this->data->destroy_iteration_buffer(acc);
 }
 
 TEST(TestBPlusTree, InsertingManyOverlappingKeys) {
-    class Counter : public HitboxIndex<Counter> {
-    public:
-        void search_callback(HitboxIterator* iter) {
-            while (iter->has_next()) {
-                auto hitbox = iter->next();
-                hitbox->a2 += 1.0f;
-            }
-        }
-    };
+    constexpr size_t SIZE = 103;
 
-    Hitbox* hitbox = new Hitbox();
-    hitbox->a1 = 0;
-    hitbox->b1 = 0;
-    hitbox->a2 = 0;
-    hitbox->b2 = 0;
-
-    auto bptree = new Counter();
+    Hitbox* array = make_hitbox_array(SIZE);
+    auto bptree = new MyHitboxes();
     auto acc = bptree->make_iteration_buffer();
 
-    // insert the same hitbox 71 times, using the same key
-    for (size_t i = 0; i < 71; i++) {
-        bptree->insert(2.0f, hitbox);
+    // insert `SIZE` different hitboxes associated with the same key
+    for (size_t i = 0; i < SIZE; i++) {
+        bptree->insert(2.0f, &(array[i]));
     }
-    // perform a range search and count the hits
-    bptree->range_search(1.5f, 2.5f, acc);
-    EXPECT_TRUE(hitbox->a2 >= 70.5f && hitbox->a2 <= 71.5f);
+
+    // perform a range search and check the markings
+    bptree->range_search(1.5f, 2.0f, acc);
+    EXPECT_ALL_MARKED(array, SIZE);
 
     bptree->destroy_iteration_buffer(acc);
     delete bptree;
-    delete hitbox;
+    delete array;
+}
+
+TEST(TestBPlusTree, InsertingManyKeysInReverseOrder) {
+    constexpr size_t SIZE = 97;
+    Hitbox* array = make_hitbox_array(SIZE);
+    auto bptree = new MyHitboxes();
+    auto acc = bptree->make_iteration_buffer();
+    for (size_t i = 0; i < SIZE; i++) {
+        array[i].b1 = 99.0f - i;
+        bptree->insert(99.0f - i, &(array[i]));
+    }
+
+    bptree->test_if_values_are_sorted(1.0f);
+    bptree->range_search(1.0f, 100.0f, acc);
+    EXPECT_ALL_MARKED(array, SIZE);
+
+    bptree->destroy_iteration_buffer(acc);
+    delete bptree;
+    delete array;
 }
 
 TEST(TestBPlusTree, RangeSearchInEmptyTree) {

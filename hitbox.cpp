@@ -1,5 +1,8 @@
 #include <math.h>
 #include <stddef.h>
+#ifdef DEBUG
+#include <stdexcept>
+#endif
 #include "bptree.hpp"
 #include "hitbox.hpp"
 

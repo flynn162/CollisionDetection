@@ -54,10 +54,10 @@ protected:
 
 template<class CRTP>
 class HitboxIndex : public BaseHitboxIndex {
-protected:
     // Implement this in your derived class
-    void search_callback(HitboxIterator* iter) = delete;
+    // void search_callback(HitboxIterator* iter);
 
+protected:
     void callback(void** buffer, size_t size) override {
         HitboxIterator iter = HitboxIterator(buffer, size);
         static_cast<CRTP*>(this)->search_callback(&iter);

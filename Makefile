@@ -1,5 +1,5 @@
 CC := g++
-CXXFLAGS := -std=c++14
+CXXFLAGS := -Wall -std=c++17
 ifeq ($(DEBUG),1)
   CXXFLAGS += -g -DDEBUG
 else

@@ -11,6 +11,9 @@ public:
     Acc* make_iteration_buffer();
     void destroy_iteration_buffer(Acc* acc);
 
+    // Unit test helpers
+    void test_if_values_are_sorted(float since);
+
 protected:
     BaseBPTree();
 

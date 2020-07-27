@@ -52,7 +52,7 @@ public:
     }
 
     void ensure_space() {
-        if (BUFFER_SIZE - this->size < MAX_WEIGHT) {
+        if (this->size > BUFFER_SIZE - MAX_WEIGHT) {
             this->parent->callback(this->buffer, this->size);
             this->size = 0;
         }
@@ -107,9 +107,9 @@ void BaseBPTree::search_p(float key, BaseBPTree::Acc* out) {
 
 void BaseBPTree::range_search_p(float k0, float k1, BaseBPTree::Acc* out) {
     auto curr = find_leaf(k0, this->root);
+    size_t i = 0;
     while (curr != nullptr && curr->keys[0] <= k1) {
         // go through a leaf node and extract keys in the range [k0, k1]
-        size_t i = 0;
         while (curr->keys[i] <= k1) {
             if (curr->keys[i] >= k0)
                 out->put(curr->values[i + 1].p);
@@ -118,9 +118,30 @@ void BaseBPTree::range_search_p(float k0, float k1, BaseBPTree::Acc* out) {
         // go to the next sibling leaf node
         // (because we may have stopped at an INFINITY mark)
         curr = curr->next;
+        i = 0;
         out->ensure_space();
     }
     out->flush();
+}
+
+void BaseBPTree::test_if_values_are_sorted(float since) {
+    auto curr = find_leaf(since, this->root);
+    float last_key = -INFINITY;
+    while (curr != nullptr) {
+        if (last_key > curr->keys[0]) {
+            throw std::logic_error("not sorted!");
+        }
+        for (size_t i = 0; i < MAX_WEIGHT - 1; i++) {
+            if (curr->keys[i] > curr->keys[i + 1]) {
+                throw std::logic_error("not sorted within a node");
+            }
+            if (isinf(curr->keys[i + 1])) {
+                last_key = curr->keys[i];
+                break;
+            }
+        }
+        curr = curr->next;
+    }
 }
 
 static void insertion_sort(BPTreeNode* self, size_t idx) {
@@ -195,13 +216,15 @@ constexpr size_t index_to_split_at() {
     return MAX_WEIGHT / 2;
 }
 
-static BPTreeNode* split_node(BPTreeNode* self) {
-    // Split a full node into two. Return the new node that is allocated
+static BPTreeNode* split_node(BPTreeNode* self, float* key_out) {
+    // Split a full node into two. Return the new node that is allocated.
+    // The "lifted key" is written to `key_out`
 
     constexpr size_t i = index_to_split_at();
     size_t bytes_f = (MAX_WEIGHT - i - 1) * sizeof(self->keys[0]);
     size_t bytes_p = (MAX_WEIGHT - i) * sizeof(self->values[0]);
 
+    *key_out = self->keys[i];  // the key to be lifted
     BPTreeNode* new_node = make_bptree_node();
 
     if (self->next == self) {
@@ -227,53 +250,65 @@ static BPTreeNode* split_node(BPTreeNode* self) {
     return new_node;
 }
 
-static BPTreeNode* insert(float key, void** value_out, BPTreeNode* curr) {
+static BPTreeNode* insert(float* key_out, void** value_out, BPTreeNode* curr) {
+    // Private recursive method for inserting a key into the tree
+    //
+    // Returns a new BPTreeNode if there was a need to create one. If no new
+    // node was created, we return nullptr.
+    //
+    // Out parameters: If we created a new node, the "lifted key" will be
+    // written to `key_out`; otherwise, we leave `key_out` unchanged. If the
+    // inserting operation replaces an existing value under the same key, the
+    // "old value" will be written to `value_out`; otherwise, a nullptr will be
+    // written to `value_out`.
+
     if (curr == nullptr) {
         // base case: empty leaf node
+        // `new_node` becomes the last internal node
         auto new_node = make_bptree_node();
-        new_node->keys[0] = key;
+        new_node->keys[0] = *key_out;
         new_node->values[1].p = *value_out;
         *value_out = nullptr;
+        // How to set the `next` field?
+        // Maybe merge this case with the recursive case?
         return new_node;
     } else if (curr != curr->next) {
         // base case: leaf node
-        if (insert_into<void>(curr, key, value_out))
-            return split_node(curr);  // node becomes full
+        if (insert_into<void>(curr, *key_out, value_out))
+            return split_node(curr, key_out);  // node becomes full
         else
             return nullptr;
     } else {
-        // internal node
-        float key_to_insert = curr->keys[index_to_split_at()];
-        // find a place to descent into
-        size_t idx = 0;
-        while (curr->keys[idx] <= key)
-            idx++;
-        // descent and perform recursion
-        BPTreeNode* new_node = insert(key, value_out, curr->values[idx].b);
+        // internal node case
+        float kxchg = *key_out;
+        // find the appropriate index
+        size_t i = 0;
+        while (curr->keys[i] <= kxchg) i++;
+        // descend into a child node
+        BPTreeNode* new_node = insert(&kxchg, value_out, curr->values[i].b);
         if (new_node != nullptr) {
-            // insert the floating point key into the current node
-            if (insert_into<BPTreeNode>(curr, key_to_insert, &new_node))
-                return split_node(curr);
+            // a new node was created; the lifted key was written into kxchg
+            // we should insert kxchg into the current node
+            if (insert_into<BPTreeNode>(curr, kxchg, &new_node))
+                return split_node(curr, key_out);
         }
         return nullptr;
     }
 }
 
 void* BaseBPTree::replace_p(float key, void* value) {
-    float lifted_key = this->root->keys[index_to_split_at()];
-    BPTreeNode* new_node = insert(key, &value, this->root);
+    BPTreeNode* new_node = insert(&key, &value, this->root);
     if (new_node != nullptr) {
-        // add a key to our root
-        if (insert_into<BPTreeNode>(this->root, lifted_key, &new_node)) {
-            // root node full, split
-            BPTreeNode* new_node = split_node(this->root);
-            // make a new root node
-            BPTreeNode* new_root = make_bptree_node();
-            new_root->keys[0] = lifted_key;
-            new_root->values[0].b = this->root;
-            new_root->values[1].b = new_node;
-            this->root = new_root;
-        }
+        // root node was full and was split into two
+        // a new node was allocated; lifted key was written to `key`
+        // make a new root
+        // add the lifted key to the new root
+        BPTreeNode* new_root = make_bptree_node();
+        new_root->keys[0] = key;
+        new_root->values[0].b = this->root;
+        new_root->values[1].b = new_node;
+        new_root->next = new_root;  // mark as internal node
+        this->root = new_root;
     }
     return value;
 }
