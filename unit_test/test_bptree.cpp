@@ -212,11 +212,16 @@ TEST(TestBPlusTree, InsertingManyKeysInRandomOrder) {
     bptree->test_if_root_is_non_degenerate();
 
     auto acc = bptree->make_iteration_buffer();
+    // After these searches, all keys shall be marked,
+    // and each key shall be marked exactly once
     bptree->range_search(100.0f, 333.3f, acc);
     bptree->range_search(0.0f, 99.5f, acc);
     bptree->range_search(333.4f, 1234.5f, acc);
     bptree->range_search(1234.25f, 9999.0f, acc);
     EXPECT_ALL_MARKED(array, SIZE);
+    // These searches shall not mark any key
+    bptree->range_search(-2.0f, -0.1f, acc);
+    bptree->range_search(9000.0f, 9012.0f, acc);
 
     bptree->destroy_iteration_buffer(acc);
     delete bptree;
