@@ -481,9 +481,12 @@ static float borrow_keys_L(BPTreeNode* sndr, size_t sndr_weight, float ikey) {
     for (int i = recv_weight - 1; i >= 0; i--) {  // we must use "int" here
         recv->keys[i + nkb] = recv->keys[i];
     }
-    // Note the +1 (we will move values[0]) to values[nkb]
+    // Note the +1 (we will move values[0] to values[nkb])
     size_t size_u = sizeof(recv->values[0]) * (recv_weight + 1);
     memmove(&(recv->values[nkb]), &(recv->values[0]), size_u);
+    // zero out the first value pointer in `recv`
+    // we do this because we will return keys[0]
+    memset(recv->values, 0, sizeof(recv->values[0]));
 
     // Check if we need to pull down the intermediate key
     if (ikey != recv->keys[nkb] && recv->values[nkb].b != nullptr) {
@@ -502,11 +505,7 @@ static float borrow_keys_L(BPTreeNode* sndr, size_t sndr_weight, float ikey) {
         sndr->keys[i] = INFINITY;
     }
 
-    // move values
-
-    // effectively this is recv->values[0].{b,p} = nullptr;
-    // this is because we will return keys[0]
-    memset(recv->values, 0, sizeof(recv->values[0]));
+    // move values (from sender to recv->values[1] etc)
     size_u = sizeof(recv->values[0]) * nkb;
     memcpy(&(recv->values[1]), &(sndr->values[sndr_weight+1 - nkb]), size_u);
     memset(&(sndr->values[sndr_weight+1 - nkb]), 0, size_u);
