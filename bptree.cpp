@@ -422,6 +422,17 @@ static float borrow_keys_R(BPTreeNode* recv, size_t recv_weight, float ikey) {
 
     // Compute the number of keys to borrow
     size_t nkb = compute_nkb(recv_weight, send_weight);
+
+    //        v                  v      (nkb=4)
+    //     +-+-+-+-+-+    +-+-+-+-+-+
+    //     |A| | | | |    |X|Y|Z|W|U|
+    // ... +-\-\-\-\-\-+  +-\-\-\-\-\-+ ...
+    //       |a| | | | |  |p|x|y|z|w|u|
+    //       +-+-+-+-+-+  +-+-+-+-+-+-+
+    //          ^                  ^
+    //
+    //         Receiver    Sender
+
     // Check if we need to keep send->values[0]
     // Note: if intermediate_key == keys[0] then values[0] is null
     if (ikey != send->keys[0]) {
@@ -438,11 +449,31 @@ static float borrow_keys_R(BPTreeNode* recv, size_t recv_weight, float ikey) {
         }
     }
 
+    //          v                  v      (nkb=4) (safe)
+    //     +-+-+-+-+-+-+    +-+-+-+-+-+
+    //     |A|I| | | | |    |X|Y|Z|W|U|
+    // ... +-\-\-\-\-\-+-+  +-\-\-\-\-\-+ ...
+    //       |a|p| | | | |  | |x|y|z|w|u|
+    //       +-+-+-+-+-+-+  +-+-+-+-+-+-+
+    //          * ^          0       ^
+    //
+    //           Receiver    Sender
+
     // copy keys and values
     size_t size_f = nkb * sizeof(float);
     size_t size_u = nkb * sizeof(recv->values[0]);
     memcpy(&(recv->keys[recv_weight]),   &(send->keys[0]),   size_f);
-    memcpy(&(recv->values[recv_weight]), &(send->values[0]), size_u);
+    memcpy(&(recv->values[recv_weight]), &(send->values[1]), size_u);
+
+    //        v                  v      (nkb=4)
+    //     +-+-+-+-+-+    +-+-+-+-+-+
+    //     |A|X|Y|Z|W|    |X|Y|Z|W|U|
+    // ... +-\-\-\-\-\-+  +-\-\-\-\-\-+ ...
+    //       |a|x|y|z|w|  | |x|y|z|w|u|
+    //       +-+-+-+-+-+  +-+-+-+-+-+-+
+    //          ^          0       ^
+    //
+    //         Receiver    Sender
 
     // reorganize sender's key
     for (size_t i = nkb; i < send_weight; i++) {
@@ -453,10 +484,23 @@ static float borrow_keys_R(BPTreeNode* recv, size_t recv_weight, float ikey) {
     }
 
     // reorganize sender's value pointers
-    size_u = sizeof(send->values[0]) * (send_weight - nkb);
-    memmove(&(send->values[0]), &(send->values[nkb]), size_u);
-    size_u = sizeof(send->values[0]) * nkb;
-    memset(&(send->values[send_weight - nkb]), 0, size_u);
+    for (size_t i = nkb + 1; i < send_weight + 1; i++) {
+        // send->values[i - nkb] = send->values[i]
+        constexpr size_t sz = sizeof(send->values[0]);
+        memcpy(&(send->values[i - nkb]), &(send->values[i]), sz);
+    }
+    // size_u = sizeof(send->values[0]) * nkb;  /* need not recompute this */
+    memset(&(send->values[send_weight+1 - nkb]), 0, size_u);
+
+    //        v                       v      (nkb=4)
+    //     +-+-+-+-+-+         +-+-+-+-+-+
+    //     |A|X|Y|Z|W|         |U|*|*|*|*|
+    // ... +-\-\-\-\-\-+ ...   +-\-\-\-\-\-+ ...
+    //       |a|x|y|z|w|       | |u|*|*|*|*|
+    //       +-+-+-+-+-+       +-+-+-+-+-+-+
+    //          ^                       ^
+    //
+    //         Receiver         Sender
 
     return send->keys[0];
 }
@@ -477,16 +521,39 @@ static float borrow_keys_L(BPTreeNode* sndr, size_t sndr_weight, float ikey) {
     size_t recv_weight = get_node_weight(recv);
     size_t nkb = compute_nkb(recv_weight, sndr_weight);
 
+    //        v                         (nkb=4)
+    //     +-+-+-+-+-+    +-+-+-+-+-+
+    //     |A|B|C|D|E|    |X|Y|Z|W|.|
+    // ... +-\-\-\-\-\-+  +-\-\-\-\-+-+ ...
+    //       |a|b|c|d|e|  |p|x|y|z|w|.|
+    //       +-+-+-+-+-+  +-+-+-+-+-+-+
+    //          ^                  *
+    //
+    //           Sender    Receiver
+
     // move the receiver's keys and values to make space
     for (int i = recv_weight - 1; i >= 0; i--) {  // we must use "int" here
         recv->keys[i + nkb] = recv->keys[i];
     }
-    // Note the +1 (we will move values[0] to values[nkb])
-    size_t size_u = sizeof(recv->values[0]) * (recv_weight + 1);
-    memmove(&(recv->values[nkb]), &(recv->values[0]), size_u);
+    // Note that we will move values[0] to values[nkb]
+    for (int i = recv_weight; i >= 0; i--) {
+        // recv->values[i + nkb] = recv->values[i];
+        constexpr size_t sz = sizeof(recv->values[0]);
+        memcpy(&(recv->values[i + nkb]), &(recv->values[i]), sz);
+    }
     // zero out the first value pointer in `recv`
     // we do this because we will return keys[0]
     memset(recv->values, 0, sizeof(recv->values[0]));
+
+    //        v                         (nkb=4)
+    //     +-+-+-+-+-+    +-+-+-+-+-+
+    //     |A|B|C|D|E|    |.|.|.|.|X|
+    // ... +-\-\-\-\-\-+  +-\-\-\-\-\-+ ...
+    //       |a|b|c|d|e|  | |.|.|.|p|x|
+    //       +-+-+-+-+-+  +-+-+-+-+-+-+
+    //          ^          0       *
+    //
+    //           Sender    Receiver
 
     // Check if we need to pull down the intermediate key
     if (ikey != recv->keys[nkb] && recv->values[nkb].b != nullptr) {
@@ -498,17 +565,49 @@ static float borrow_keys_L(BPTreeNode* sndr, size_t sndr_weight, float ikey) {
 
     if (nkb == 0) return ikey;
 
+    //          v                       (nkb=3)
+    //     +-+-+-+-+-+    +-+-+-+-+-+
+    //     |A|B|C|D|E|    |.|.|.|I|X|
+    // ... +-\-\-\-\-\-+  +-\-\-\-\-\-+ ...
+    //       |a|b|c|d|e|  | |.|.|.|p|x|
+    //       +-+-+-+-+-+  +-+-+-+-+-+-+
+    //            ^                *
+    //
+    //           Sender    Receiver
+
     // move keys
-    size_t size_f = sizeof(float) * nkb;
-    memcpy(recv->keys, &(sndr->keys[sndr_weight - nkb]), size_f);
+    // move values (from sender to recv->values[1] etc)
+    size_t size_f;
+    size_f = sizeof(float) * nkb;
+    size_u = sizeof(recv->values[0]) * nkb;
+    memcpy(&(recv->keys[0]),   &(sndr->keys[sndr_weight - nkb]),     size_f);
+    memcpy(&(recv->values[1]), &(sndr->values[sndr_weight+1 - nkb]), size_u);
+
+    //        v                         (nkb=4)
+    //     +-+-+-+-+-+    +-+-+-+-+-+
+    //     |A|B|C|D|E|    |B|C|D|E|X|
+    // ... +-\-\-\-\-\-+  +-\-\-\-\-\-+ ...
+    //       |a|b|c|d|e|  | |b|c|d|e|x|
+    //       +-+-+-+-+-+  +-+-+-+-+-+-+
+    //          ^                  *
+    //
+    //           Sender    Receiver
+
+    // clean up
     for (size_t i = sndr_weight - nkb; i < sndr_weight; i++) {
         sndr->keys[i] = INFINITY;
     }
-
-    // move values (from sender to recv->values[1] etc)
-    size_u = sizeof(recv->values[0]) * nkb;
-    memcpy(&(recv->values[1]), &(sndr->values[sndr_weight+1 - nkb]), size_u);
     memset(&(sndr->values[sndr_weight+1 - nkb]), 0, size_u);
+
+    //        v                         (nkb=4)
+    //     +-+-+-+-+-+    +-+-+-+-+-+
+    //     |A| | | | |    |B|C|D|E|X|
+    // ... +-\-\-\-\-\-+  +-\-\-\-\-\-+ ...
+    //       |a| | | | |  | |b|c|d|e|x|
+    //       +-+-+-+-+-+  +-+-+-+-+-+-+
+    //          ^                  *
+    //
+    //           Sender    Receiver
 
     return recv->keys[0];
 }
