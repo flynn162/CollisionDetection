@@ -19,8 +19,8 @@ protected:
     BaseBPTree();
 
     void* replace_p(float key, void* value);
-    void update_p(float old_key, float new_key, void* value);
-    void delete_p(float key, void* match_value);
+    void update_p(float old_key, float new_key);
+    void delete_p(float key, void** value_out);
     void search_p(float key, Acc* out);
     void range_search_p(float k0, float k1, Acc* out);
 

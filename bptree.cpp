@@ -3,9 +3,11 @@
 #include <string.h>
 #include <limits>
 #include <stdexcept>
+#include <algorithm>
 #include "bptree.hpp"
 
 constexpr size_t MAX_WEIGHT = 20;
+constexpr size_t MIN_WEIGHT = MAX_WEIGHT / 2 - 1;
 constexpr size_t BUFFER_SIZE = 80;
 
 
@@ -316,10 +318,213 @@ void BaseBPTree::test_if_root_is_non_degenerate() {
         throw std::logic_error("root node is broken (degenerate)");
 }
 
-void BaseBPTree::update_p(float old_key, float new_key, void* value) {
+
+void BaseBPTree::update_p(float old_key, float new_key) {
     // not implemented
 }
 
-void BaseBPTree::delete_p(float key, void* match_value) {
-    // not implemented
+
+static size_t get_node_weight(BPTreeNode* node) {
+    size_t weight = 0;
+    while (!isinf(node->keys[weight])) weight++;
+    return weight;
+}
+
+template<class T>
+static void copy_value(BPTreeNode* self, size_t idst, size_t isrc) {
+    throw std::logic_error("not implemented");
+}
+template<>
+void copy_value<void>(BPTreeNode* self, size_t idst, size_t isrc) {
+    // leaf node
+    self->values[idst].p = self->values[isrc].p;
+}
+template<>
+void copy_value<BPTreeNode>(BPTreeNode* self, size_t idst, size_t isrc) {
+    // internal node
+    self->values[idst].b = self->values[isrc].b;
+}
+
+template<class T>
+static void clear_value(BPTreeNode* self, size_t idst) {
+    throw std::logic_error("not implemented");
+}
+template<>
+void clear_value<void>(BPTreeNode* self, size_t idst) {
+    // leaf node
+    self->values[idst].p = nullptr;
+}
+template<>
+void clear_value<BPTreeNode>(BPTreeNode* self, size_t idst) {
+    // internal node
+    self->values[idst].b = nullptr;
+}
+
+template<class T>
+static size_t delete_key_from_node(BPTreeNode* curr, float key) {
+    // compute the node's old weight and find the key
+    int key_idx = -1;
+    size_t weight = 0;
+    while (!isinf(curr->keys[weight])) {
+        key_idx = (curr->keys[weight] == key) ? weight : key_idx;
+        weight++;
+    }
+
+    if (key_idx >= 0) {
+        // key was found
+        // move the keys
+        for (size_t i = key_idx + 1; i < weight; i++) {
+            curr->keys[i - 1] = curr->keys[i];
+        }
+        curr->keys[weight - 1] = INFINITY;
+        // move the values
+        for (size_t i = key_idx + 2; i < weight + 1; i++) {
+            copy_value<T>(curr, i - 1, i);
+        }
+        clear_value<T>(curr, weight);
+
+        return weight - 1;
+    } else {
+        // key was not found
+        return weight;
+    }
+}
+
+static size_t compute_nkb(size_t receiver_weight, size_t sender_weight) {
+#ifdef DEBUG
+    if (receiver_weight >= sender_weight)
+        throw std::logic_error("weight");
+#endif
+    constexpr size_t target_weight = MAX_WEIGHT * 2 / 3;
+    size_t sender_gives = (sender_weight > target_weight)
+        ? (sender_weight - target_weight)
+        : 1;
+    size_t receiver_wants = (target_weight > receiver_weight)
+        ? (target_weight - receiver_weight)
+        : 1;
+    return std::min(sender_gives, receiver_wants);
+}
+
+static float borrow_keys_R(BPTreeNode* recv, size_t recv_weight, float ikey) {
+    // Move keys and values from the sender (the node to my right) to the
+    // receiver so that both the receiver and the sender are appropriately
+    // weighted.
+    //
+    // Behavior is undefined if `recv` is the last child of its parent.
+    //
+    // :param recv: pointer to receiver node
+    // :param recv_weight: original weight of the receiver
+    // :param ikey: intermediate key (equals parent[sender_key_index])
+    // :return: the sender's new key
+
+    BPTreeNode* send = recv->next;
+    size_t send_weight = get_node_weight(send);
+
+    // Compute the number of keys to borrow
+    size_t nkb = compute_nkb(recv_weight, send_weight);
+    // Check if we need to keep send->values[0]
+    // Note: if intermediate_key == keys[0] then values[0] is null
+    if (ikey != send->keys[0]) {
+        // this case is only true for internal nodes
+        BPTreeNode* node_ptr = send->values[0].b;
+        if (node_ptr != nullptr) {
+            // do not drop the node_ptr
+            recv->keys[recv_weight] = ikey;
+            recv->values[recv_weight + 1].b = node_ptr;
+            // after weight increment, `nkb` is still safe to use
+            recv_weight++;
+            send->values[0].b = nullptr;
+            // this is because we'll return send->keys[0];
+        }
+    }
+
+    // copy keys and values
+    size_t size_f = nkb * sizeof(float);
+    size_t size_u = nkb * sizeof(recv->values[0]);
+    memcpy(&(recv->keys[recv_weight]),   &(send->keys[0]),   size_f);
+    memcpy(&(recv->values[recv_weight]), &(send->values[0]), size_u);
+
+    // reorganize sender's key
+    for (size_t i = nkb; i < send_weight; i++) {
+        send->keys[i - nkb] = send->keys[i];
+    }
+    for (size_t i = send_weight - nkb; i < send_weight; i++) {
+        send->keys[i] = INFINITY;
+    }
+
+    // reorganize sender's value pointers
+    size_u = sizeof(send->values[0]) * (send_weight - nkb);
+    memmove(&(send->values[0]), &(send->values[nkb]), size_u);
+    size_u = sizeof(send->values[0]) * nkb;
+    memset(&(send->values[send_weight - nkb]), 0, size_u);
+
+    return send->keys[0];
+}
+
+static float borrow_keys_L(BPTreeNode* sndr, size_t sndr_weight, float ikey) {
+    // Move keys and values from the sender to the receiver so that both the
+    // sender and the receiver are appropriately weighted.
+    //
+    // Behavior is undefined if the receiver is a child of index 0 in its
+    // parent node.
+    //
+    // :param sndr: the node to the left of the receiver.
+    // :param sndr_weight: original sender weight
+    // :param ikey: intermediate key which equals parent[receiver_key_index]
+    // :return: the receiver's new key
+
+    BPTreeNode* recv = sndr->next;
+    size_t recv_weight = get_node_weight(recv);
+    size_t nkb = compute_nkb(recv_weight, sndr_weight);
+
+    // move the receiver's keys and values to make space
+    for (int i = recv_weight - 1; i >= 0; i--) {  // we must use "int" here
+        recv->keys[i + nkb] = recv->keys[i];
+    }
+    // Note the +1 (we will move values[0]) to values[nkb]
+    size_t size_u = sizeof(recv->values[0]) * (recv_weight + 1);
+    memmove(&(recv->values[nkb]), &(recv->values[0]), size_u);
+
+    // Check if we need to pull down the intermediate key
+    if (ikey != recv->keys[nkb] && recv->values[nkb].b != nullptr) {
+        // put the intermediate key into the receiver
+        recv->keys[nkb - 1] = ikey;
+        // since we used a slot, decrease nkb by one
+        nkb--;
+    }
+
+    if (nkb == 0) return ikey;
+
+    // move keys
+    size_t size_f = sizeof(float) * nkb;
+    memcpy(recv->keys, &(sndr->keys[sndr_weight - nkb]), size_f);
+    for (size_t i = sndr_weight - nkb; i < sndr_weight; i++) {
+        sndr->keys[i] = INFINITY;
+    }
+
+    // move values
+
+    // effectively this is recv->values[0].{b,p} = nullptr;
+    // this is because we will return keys[0]
+    memset(recv->values, 0, sizeof(recv->values[0]));
+    size_u = sizeof(recv->values[0]) * nkb;
+    memcpy(&(recv->values[1]), &(sndr->values[sndr_weight+1 - nkb]), size_u);
+    memset(&(sndr->values[sndr_weight+1 - nkb]), 0, size_u);
+
+    return recv->keys[0];
+}
+
+template<class T>
+static void delete_key(BPTreeNode* parent, size_t idxk, float* ogkey) {
+    auto curr = parent->values[idxk + 1].b;
+    size_t new_weight = delete_key_from_node<T>(curr, ogkey);
+    if (new_weight < MIN_WEIGHT) {
+    } else {
+        // adjust key (e.g. what if we deleted the smallest key?)
+        parent->keys[idxk] = curr->keys[0];
+    }
+}
+
+void BaseBPTree::delete_p(float key, void** value_out) {
+    // Will try to merge, unless we cannot merge the two nodes
 }
