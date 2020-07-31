@@ -577,9 +577,8 @@ static float borrow_keys_L(BPTreeNode* sndr, size_t sndr_weight, float ikey) {
 
     // move keys
     // move values (from sender to recv->values[1] etc)
-    size_t size_f;
-    size_f = sizeof(float) * nkb;
-    size_u = sizeof(recv->values[0]) * nkb;
+    size_t size_f = sizeof(float) * nkb;
+    size_t size_u = sizeof(recv->values[0]) * nkb;
     memcpy(&(recv->keys[0]),   &(sndr->keys[sndr_weight - nkb]),     size_f);
     memcpy(&(recv->values[1]), &(sndr->values[sndr_weight+1 - nkb]), size_u);
 
