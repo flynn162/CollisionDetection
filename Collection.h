@@ -40,7 +40,11 @@ static void SetNode_destroy(SetNode* this) {
 }
 
 static size_t Collection_last_node_size(Collection* this) {
-    // Get the last node's size
+    // Get the last node's size from NaN box
+    // Read from the Common Initial Sequence. If not NaN, return 0
+    if (!isnan(this->nan_box)) {
+        return 0;  // sanity check
+    }
     RawFloatData data;
     data.nan_box = this->nan_box;
     return data.raw[0];
